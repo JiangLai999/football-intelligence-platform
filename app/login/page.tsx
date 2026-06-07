@@ -12,7 +12,7 @@ export default async function LoginPage({
   const nextPath = params.next ?? "/operator";
 
   if (authenticated) {
-    redirect(nextPath);
+    redirect(nextPath as Parameters<typeof redirect>[0]);
   }
 
   return (
