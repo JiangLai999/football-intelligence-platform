@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run db:generate && npm run build",
+  "installCommand": "npm ci",
+  "framework": "nextjs",
+  "regions": ["sin1"]
+}
