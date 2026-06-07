@@ -35,7 +35,7 @@ export async function getOperatorOverview(filters?: {
   const runStageFilter = filters?.runStage && filters.runStage !== "all" ? filters.runStage : undefined;
   const runNameFilter = filters?.runName && filters.runName !== "all" ? filters.runName : undefined;
 
-  const [sources, alerts, fallbackIngestionRuns, jobRuns, auditLogs] = await Promise.all([
+  const [sources, alerts, ingestionPayload, jobRuns, auditLogs] = await Promise.all([
     getPersistedOrFallbackSources(),
     getOddsAlerts(),
     getDemoIngestionRuns(),
@@ -154,12 +154,16 @@ export async function getOperatorOverview(filters?: {
         finishedAt: run.finishedAt?.toISOString() ?? "In progress",
         note: run.note ?? ""
       }))
-    : fallbackIngestionRuns.map((run) => ({
-        ...run,
+    : ingestionPayload.runs.map((run) => ({
+        name: run.name,
+        processed: run.processed,
+        written: run.written,
+        skipped: run.skipped,
         stage: "ingestion",
+        status: run.status === "completed" ? "COMPLETED" : run.status === "dry-run" ? "DRY_RUN" : "FAILED",
         startedAt: "Demo run",
         finishedAt: run.status === "dry-run" ? "Not persisted" : "Completed",
-        note: "Generated from local demo adapters."
+        note: `Channel: ${run.channel}. Generated from live/demo adapters.`
       }));
 
   return {

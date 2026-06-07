@@ -1,0 +1,35 @@
+name: Data Refresh
+
+on:
+  schedule:
+    # 每 30 分钟拉取一次真实数据
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Vercel refresh endpoint
+        run: |
+          if [ -z "$VERCEL_REFRESH_URL" ]; then
+            echo "VERCEL_REFRESH_URL is not set, skipping remote refresh."
+            exit 0
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $REFRESH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -w "\n%{http_code}" \
+            "$VERCEL_REFRESH_URL")
+
+          http_code=$(echo "$response" | tail -n 1)
+          body=$(echo "$response" | sed '$d')
+
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "Refresh succeeded: $body"
+          else
+            echo "Refresh failed (HTTP $http_code): $body"
+            exit 1
+          fi

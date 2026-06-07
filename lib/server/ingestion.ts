@@ -1,4 +1,5 @@
 import { hasDatabaseUrl, prisma } from "@/lib/prisma";
+import { fetchFixtures, fetchLineups, fetchNews, fetchOdds, fetchRankings, getSourceHealth } from "@/lib/server/channel-router";
 import { DemoFixtureAdapter } from "@/lib/server/connectors/fixtures-adapter";
 import { DemoOddsAdapter } from "@/lib/server/connectors/odds-adapter";
 import { DemoLineupAdapter } from "@/lib/server/connectors/lineups-adapter";
@@ -7,6 +8,7 @@ import { DemoNewsAdapter } from "@/lib/server/connectors/news-adapter";
 
 type IngestionResult = {
   name: string;
+  channel: string;
   processed: number;
   written: number;
   skipped: number;
@@ -14,15 +16,18 @@ type IngestionResult = {
 };
 
 export async function ingestDemoFixtures(): Promise<IngestionResult> {
+  const result = await fetchFixtures();
   const adapter = new DemoFixtureAdapter();
-  const fixtures = await adapter.fetchFixtures();
+  const name = `${adapter.sourceId}|${result.channel}`;
+  const records = result.records;
 
   if (!hasDatabaseUrl()) {
     return {
-      name: adapter.sourceId,
-      processed: fixtures.length,
+      name,
+      channel: result.channel,
+      processed: records.length,
       written: 0,
-      skipped: fixtures.length,
+      skipped: records.length,
       status: "dry-run"
     };
   }
@@ -30,9 +35,11 @@ export async function ingestDemoFixtures(): Promise<IngestionResult> {
   let written = 0;
   let skipped = 0;
 
-  for (const fixture of fixtures) {
+  for (const fixture of records) {
     const competition = await prisma.competition.findFirst({ where: { name: fixture.competition } });
-    const season = await prisma.season.findFirst({ where: { name: fixture.season, competitionId: competition?.id } });
+    const season = competition
+      ? await prisma.season.findFirst({ where: { name: String(fixture.season), competitionId: competition.id } })
+      : null;
     const homeTeam = await prisma.team.findFirst({ where: { name: fixture.homeTeam } });
     const awayTeam = await prisma.team.findFirst({ where: { name: fixture.awayTeam } });
 
@@ -63,8 +70,9 @@ export async function ingestDemoFixtures(): Promise<IngestionResult> {
   }
 
   return {
-    name: adapter.sourceId,
-    processed: fixtures.length,
+    name,
+    channel: result.channel,
+    processed: records.length,
     written,
     skipped,
     status: "completed"
@@ -72,15 +80,18 @@ export async function ingestDemoFixtures(): Promise<IngestionResult> {
 }
 
 export async function ingestDemoOdds(): Promise<IngestionResult> {
+  const result = await fetchOdds();
   const adapter = new DemoOddsAdapter();
-  const odds = await adapter.fetchOdds();
+  const name = `${adapter.sourceId}|${result.channel}`;
+  const records = result.records;
 
   if (!hasDatabaseUrl()) {
     return {
-      name: adapter.sourceId,
-      processed: odds.length,
+      name,
+      channel: result.channel,
+      processed: records.length,
       written: 0,
-      skipped: odds.length,
+      skipped: records.length,
       status: "dry-run"
     };
   }
@@ -88,18 +99,27 @@ export async function ingestDemoOdds(): Promise<IngestionResult> {
   let written = 0;
   let skipped = 0;
 
-  for (const record of odds) {
-    const match = await prisma.match.findFirst({ where: { externalId: record.externalMatchId } });
+  for (const record of records) {
+    const match = await prisma.match.findFirst({
+      where: { externalId: { startsWith: record.externalMatchId.split("-").slice(0, 2).join("-") } }
+    }).catch(() => null);
+
+    let resolvedMatch = match;
+    if (!resolvedMatch) {
+      const stripped = record.externalMatchId.replace(/^odds-/, "").replace(/-[a-z0-9]+$/i, "");
+      resolvedMatch = await prisma.match.findFirst({ where: { externalId: stripped } });
+    }
+
     const source = await prisma.oddsSource.findFirst({ where: { name: record.source } });
 
-    if (!match || !source) {
+    if (!resolvedMatch || !source) {
       skipped += 1;
       continue;
     }
 
     await prisma.oddsSnapshot.create({
       data: {
-        matchId: match.id,
+        matchId: resolvedMatch.id,
         sourceId: source.id,
         marketType: record.marketType as never,
         line: record.line,
@@ -116,8 +136,9 @@ export async function ingestDemoOdds(): Promise<IngestionResult> {
   }
 
   return {
-    name: adapter.sourceId,
-    processed: odds.length,
+    name,
+    channel: result.channel,
+    processed: records.length,
     written,
     skipped,
     status: "completed"
@@ -125,15 +146,18 @@ export async function ingestDemoOdds(): Promise<IngestionResult> {
 }
 
 export async function ingestDemoLineups(): Promise<IngestionResult> {
+  const result = await fetchLineups();
   const adapter = new DemoLineupAdapter();
-  const lineups = await adapter.fetchLineups();
+  const name = `${adapter.sourceId}|${result.channel}`;
+  const records = result.records;
 
   if (!hasDatabaseUrl()) {
     return {
-      name: adapter.sourceId,
-      processed: lineups.length,
+      name,
+      channel: result.channel,
+      processed: records.length,
       written: 0,
-      skipped: lineups.length,
+      skipped: records.length,
       status: "dry-run"
     };
   }
@@ -141,7 +165,7 @@ export async function ingestDemoLineups(): Promise<IngestionResult> {
   let written = 0;
   let skipped = 0;
 
-  for (const record of lineups) {
+  for (const record of records) {
     const match = await prisma.match.findFirst({ where: { externalId: record.externalMatchId } });
     const team = await prisma.team.findFirst({ where: { name: record.teamName } });
 
@@ -170,8 +194,9 @@ export async function ingestDemoLineups(): Promise<IngestionResult> {
   }
 
   return {
-    name: adapter.sourceId,
-    processed: lineups.length,
+    name,
+    channel: result.channel,
+    processed: records.length,
     written,
     skipped,
     status: "completed"
@@ -179,15 +204,18 @@ export async function ingestDemoLineups(): Promise<IngestionResult> {
 }
 
 export async function ingestDemoRankings(): Promise<IngestionResult> {
+  const result = await fetchRankings();
   const adapter = new DemoRankingAdapter();
-  const rankings = await adapter.fetchRankings();
+  const name = `${adapter.sourceId}|${result.channel}`;
+  const records = result.records;
 
   if (!hasDatabaseUrl()) {
     return {
-      name: adapter.sourceId,
-      processed: rankings.length,
+      name,
+      channel: result.channel,
+      processed: records.length,
       written: 0,
-      skipped: rankings.length,
+      skipped: records.length,
       status: "dry-run"
     };
   }
@@ -196,7 +224,7 @@ export async function ingestDemoRankings(): Promise<IngestionResult> {
   let skipped = 0;
   const now = new Date();
 
-  for (const record of rankings) {
+  for (const record of records) {
     const team = await prisma.team.findFirst({ where: { name: record.teamName } });
 
     if (!team) {
@@ -229,8 +257,9 @@ export async function ingestDemoRankings(): Promise<IngestionResult> {
   }
 
   return {
-    name: adapter.sourceId,
-    processed: rankings.length,
+    name,
+    channel: result.channel,
+    processed: records.length,
     written,
     skipped,
     status: "completed"
@@ -238,15 +267,18 @@ export async function ingestDemoRankings(): Promise<IngestionResult> {
 }
 
 export async function ingestDemoNews(): Promise<IngestionResult> {
+  const result = await fetchNews();
   const adapter = new DemoNewsAdapter();
-  const news = await adapter.fetchNews();
+  const name = `${adapter.sourceId}|${result.channel}`;
+  const records = result.records;
 
   if (!hasDatabaseUrl()) {
     return {
-      name: adapter.sourceId,
-      processed: news.length,
+      name,
+      channel: result.channel,
+      processed: records.length,
       written: 0,
-      skipped: news.length,
+      skipped: records.length,
       status: "dry-run"
     };
   }
@@ -254,7 +286,7 @@ export async function ingestDemoNews(): Promise<IngestionResult> {
   let written = 0;
   let skipped = 0;
 
-  for (const item of news) {
+  for (const item of records) {
     const team = await prisma.team.findFirst({ where: { name: item.teamName } });
 
     if (!team) {
@@ -263,7 +295,7 @@ export async function ingestDemoNews(): Promise<IngestionResult> {
     }
 
     const existing = await prisma.alert.findFirst({
-      where: { match: { homeTeam: { id: team.id } }, category: "news-external" },
+      where: { category: "news-external" },
       orderBy: { createdAt: "desc" }
     });
 
@@ -298,7 +330,9 @@ export async function ingestDemoNews(): Promise<IngestionResult> {
           externalId: item.externalId,
           body: item.body,
           publishedAt: item.publishedAt,
-          team: item.teamName
+          team: item.teamName,
+          source: item.source,
+          url: item.url
         }
       }
     });
@@ -306,8 +340,9 @@ export async function ingestDemoNews(): Promise<IngestionResult> {
   }
 
   return {
-    name: adapter.sourceId,
-    processed: news.length,
+    name,
+    channel: result.channel,
+    processed: records.length,
     written,
     skipped,
     status: "completed"
@@ -322,5 +357,5 @@ export async function getDemoIngestionRuns() {
     ingestDemoRankings(),
     ingestDemoNews()
   ]);
-  return [fixtures, odds, lineups, rankings, news];
+  return { runs: [fixtures, odds, lineups, rankings, news], health: await getSourceHealth() };
 }

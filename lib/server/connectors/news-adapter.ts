@@ -5,6 +5,8 @@ export type NewsItem = {
   body: string;
   category: string;
   publishedAt: string;
+  source?: string;
+  url?: string;
 };
 
 export interface NewsAdapter {
