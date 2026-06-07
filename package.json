@@ -1,0 +1,45 @@
+{
+  "name": "football-intelligence-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck && npm run build",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "db:setup": "npm run db:generate && npm run db:push && npm run db:seed",
+    "worker:dev": "python services/pipeline/main.py"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.1",
+    "clsx": "^2.1.1",
+    "echarts": "^5.5.1",
+    "next": "15.0.3",
+    "react": "19.0.0-rc-66855b96-20241106",
+    "react-dom": "19.0.0-rc-66855b96-20241106",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.14.0",
+    "eslint-config-next": "15.0.3",
+    "postcss": "^8.4.49",
+    "prisma": "^5.19.1",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}

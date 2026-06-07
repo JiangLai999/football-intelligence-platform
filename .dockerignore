@@ -1,0 +1,11 @@
+node_modules
+.next
+coverage
+dist
+.git
+.env
+.env.local
+artifacts
+tmp
+__pycache__
+.pytest_cache

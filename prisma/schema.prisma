@@ -1,0 +1,370 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CompetitionType {
+  LEAGUE
+  CUP
+  INTERNATIONAL
+  FRIENDLY
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  POSTPONED
+  CANCELED
+}
+
+enum MarketType {
+  ONE_X_TWO
+  ASIAN_HANDICAP
+  OVER_UNDER
+  BOTH_TEAMS_TO_SCORE
+  CORRECT_SCORE
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FeedStatus {
+  ACTIVE
+  PLANNED
+  FALLBACK
+  DISABLED
+}
+
+enum JobRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  DRY_RUN
+}
+
+enum AlertState {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model Competition {
+  id          String       @id @default(cuid())
+  externalId  String?      @unique
+  name        String
+  slug        String       @unique
+  country     String?
+  type        CompetitionType
+  seasons     Season[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Season {
+  id             String       @id @default(cuid())
+  competitionId  String
+  name           String
+  yearStart      Int
+  yearEnd        Int
+  current        Boolean      @default(false)
+  competition    Competition  @relation(fields: [competitionId], references: [id])
+  matches        Match[]
+  standings      Standing[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([competitionId, name])
+}
+
+model Team {
+  id                  String             @id @default(cuid())
+  externalId          String?            @unique
+  name                String
+  slug                String             @unique
+  country             String?
+  shortName           String?
+  foundedYear         Int?
+  ratingOverall       Float?
+  ratingAttack        Float?
+  ratingDefense       Float?
+  homeMatches         Match[]            @relation("HomeTeam")
+  awayMatches         Match[]            @relation("AwayTeam")
+  squadMembers        Player[]
+  teamRatings         TeamRatingSnapshot[]
+  standings           Standing[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+}
+
+model Player {
+  id                  String      @id @default(cuid())
+  externalId          String?     @unique
+  teamId              String?
+  name                String
+  nationality         String?
+  position            String?
+  birthDate           DateTime?
+  marketValue         Int?
+  injured             Boolean     @default(false)
+  suspended           Boolean     @default(false)
+  team                Team?       @relation(fields: [teamId], references: [id])
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
+model Match {
+  id                  String              @id @default(cuid())
+  externalId          String?             @unique
+  seasonId            String
+  homeTeamId          String
+  awayTeamId          String
+  roundName           String?
+  venue               String?
+  kickoffAt           DateTime
+  status              MatchStatus         @default(SCHEDULED)
+  homeScore           Int?
+  awayScore           Int?
+  expectedHomeGoals   Float?
+  expectedAwayGoals   Float?
+  restDaysHome        Int?
+  restDaysAway        Int?
+  travelDistanceAway  Int?
+  season              Season              @relation(fields: [seasonId], references: [id])
+  homeTeam            Team                @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam            Team                @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  stats               MatchStat?
+  events              MatchEvent[]
+  oddsSnapshots       OddsSnapshot[]
+  predictions         MatchPrediction[]
+  alerts              Alert[]
+  lineups             Lineup[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([kickoffAt])
+  @@index([status])
+}
+
+model MatchStat {
+  id                  String      @id @default(cuid())
+  matchId             String      @unique
+  homePossession      Float?
+  awayPossession      Float?
+  homeShots           Int?
+  awayShots           Int?
+  homeShotsOnTarget   Int?
+  awayShotsOnTarget   Int?
+  homeCorners         Int?
+  awayCorners         Int?
+  homeDangerAttacks   Int?
+  awayDangerAttacks   Int?
+  match               Match       @relation(fields: [matchId], references: [id])
+}
+
+model MatchEvent {
+  id                  String      @id @default(cuid())
+  matchId             String
+  minute              Int
+  teamId              String?
+  playerName          String?
+  eventType           String
+  detail              String?
+  match               Match       @relation(fields: [matchId], references: [id])
+}
+
+model Lineup {
+  id                  String      @id @default(cuid())
+  matchId             String
+  teamId              String
+  formation           String?
+  confirmed           Boolean     @default(false)
+  snapshot            Json
+  match               Match       @relation(fields: [matchId], references: [id])
+}
+
+model Standing {
+  id                  String      @id @default(cuid())
+  seasonId            String
+  teamId              String
+  played              Int         @default(0)
+  wins                Int         @default(0)
+  draws               Int         @default(0)
+  losses              Int         @default(0)
+  goalsFor            Int         @default(0)
+  goalsAgainst        Int         @default(0)
+  points              Int         @default(0)
+  season              Season      @relation(fields: [seasonId], references: [id])
+  team                Team        @relation(fields: [teamId], references: [id])
+
+  @@unique([seasonId, teamId])
+}
+
+model TeamRatingSnapshot {
+  id                  String      @id @default(cuid())
+  teamId              String
+  capturedAt          DateTime
+  elo                 Float?
+  attack              Float?
+  defense             Float?
+  formScore           Float?
+  injuryImpact        Float?
+  scheduleLoad        Float?
+  team                Team        @relation(fields: [teamId], references: [id])
+
+  @@index([teamId, capturedAt])
+}
+
+model OddsSource {
+  id                  String      @id @default(cuid())
+  name                String      @unique
+  region              String?
+  snapshots           OddsSnapshot[]
+  feedConfigs         FeedSourceConfig[]
+}
+
+model OddsSnapshot {
+  id                  String      @id @default(cuid())
+  matchId             String
+  sourceId            String
+  marketType          MarketType
+  line                String?
+  homeOdds            Float?
+  drawOdds            Float?
+  awayOdds            Float?
+  overOdds            Float?
+  underOdds           Float?
+  impliedHome         Float?
+  impliedDraw         Float?
+  impliedAway         Float?
+  recordedAt          DateTime
+  match               Match       @relation(fields: [matchId], references: [id])
+  source              OddsSource  @relation(fields: [sourceId], references: [id])
+
+  @@index([matchId, recordedAt])
+  @@index([marketType])
+}
+
+model ModelVersion {
+  id                  String      @id @default(cuid())
+  code                String      @unique
+  description         String
+  createdAt           DateTime    @default(now())
+  predictions         MatchPrediction[]
+  backtests           BacktestResult[]
+}
+
+model MatchPrediction {
+  id                  String      @id @default(cuid())
+  matchId             String
+  modelVersionId      String
+  generatedAt         DateTime
+  homeWinProbability  Float
+  drawProbability     Float
+  awayWinProbability  Float
+  over25Probability   Float?
+  under25Probability  Float?
+  recommendedScoreline String
+  confidenceScore     Float
+  riskLabel           String
+  summary             String
+  featureSnapshot     Json
+  match               Match       @relation(fields: [matchId], references: [id])
+  modelVersion        ModelVersion @relation(fields: [modelVersionId], references: [id])
+  scorelines          ScoreProbability[]
+
+  @@index([matchId, generatedAt])
+}
+
+model ScoreProbability {
+  id                  String      @id @default(cuid())
+  predictionId        String
+  homeGoals           Int
+  awayGoals           Int
+  probability         Float
+  prediction          MatchPrediction @relation(fields: [predictionId], references: [id])
+
+  @@index([predictionId, probability])
+}
+
+model Alert {
+  id                  String      @id @default(cuid())
+  matchId             String
+  severity            AlertSeverity
+  category            String
+  message             String
+  state               AlertState  @default(OPEN)
+  metadata            Json?
+  createdAt           DateTime    @default(now())
+  match               Match       @relation(fields: [matchId], references: [id])
+
+  @@index([createdAt])
+}
+
+model BacktestResult {
+  id                  String       @id @default(cuid())
+  modelVersionId      String
+  competition         String
+  accuracy            Float
+  logLoss             Float
+  roi                 Float
+  sampleSize          Int
+  createdAt           DateTime     @default(now())
+  modelVersion        ModelVersion @relation(fields: [modelVersionId], references: [id])
+
+  @@index([competition, createdAt])
+}
+
+model FeedSourceConfig {
+  id                  String      @id @default(cuid())
+  sourceId            String?
+  code                String      @unique
+  label               String
+  category            String
+  mode                String
+  cadence             String
+  status              FeedStatus  @default(PLANNED)
+  notes               String?
+  enabled             Boolean     @default(true)
+  source              OddsSource? @relation(fields: [sourceId], references: [id])
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
+model JobRun {
+  id                  String       @id @default(cuid())
+  name                String
+  stage               String
+  status              JobRunStatus
+  processed           Int          @default(0)
+  written             Int          @default(0)
+  skipped             Int          @default(0)
+  startedAt           DateTime     @default(now())
+  finishedAt          DateTime?
+  note                String?
+
+  @@index([name, startedAt])
+  @@index([status])
+}
+
+model AuditLog {
+  id                  String    @id @default(cuid())
+  actor               String
+  action              String
+  entityType          String
+  entityId            String?
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, createdAt])
+}
